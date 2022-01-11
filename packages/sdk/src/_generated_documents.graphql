@@ -87,6 +87,8 @@ fragment CustomView on CustomView {
 fragment Document on Document {
   # The color of the icon.
   color
+  # The document content as JSON.
+  contentData
   # The document content in markdown format.
   content
   # The document title.
@@ -461,7 +463,7 @@ fragment WorkflowState on WorkflowState {
   id
 }
 
-# A template object used for creating new issues faster.
+# A template object used for creating entities faster.
 fragment Template on Template {
   # Template data.
   templateData
@@ -514,17 +516,27 @@ fragment UserAccount on UserAccount {
 
 # A user that has access to the the resources of an organization.
 fragment User on User {
+  # A date at which the user current status should be cleared.
+  statusUntilAt
+  # A short description of the user, either its title or bio.
+  description
   # An URL to the user's avatar image.
   avatarUrl
   # Number of issues created.
   createdIssueCount
   # Reason why is the account disabled.
   disableReason
+  # The emoji to represent the user current status.
+  statusEmoji
+  # The label of the user current status.
+  statusLabel
   # The last time at which the entity was updated. This is the same as the creation time if the
   #     entity hasn't been update after creation.
   updatedAt
   # The last time the user was seen online. If null, the user is currently online.
   lastSeen
+  # The local timezone of the user.
+  timezone
   # The time at which the entity was archived. Null if the entity has not been archived.
   archivedAt
   # The time at which the entity was created.
@@ -938,6 +950,8 @@ fragment Team on Team {
   }
   # The duration of a cycle in weeks.
   cycleDuration
+  # The icon of the team.
+  icon
   # The id of the default template to use for new issues created by members of the team.
   defaultTemplateForMembersId
   # The id of the default template to use for new issues created by non-members of the team.
@@ -947,6 +961,8 @@ fragment Team on Team {
   # The last time at which the entity was updated. This is the same as the creation time if the
   #     entity hasn't been update after creation.
   updatedAt
+  # The team's color.
+  color
   # The team's description.
   description
   # The team's name.
@@ -1213,7 +1229,7 @@ fragment IssueLabel on IssueLabel {
   # The last time at which the entity was updated. This is the same as the creation time if the
   #     entity hasn't been update after creation.
   updatedAt
-  # The team to which the label belongs to.
+  # The team that the label is associated with. If null, the label is associated with the global workspace..
   team {
     id
   }
@@ -1814,6 +1830,13 @@ fragment BillingDetailsPayload on BillingDetailsPayload {
 fragment BillingEmailPayload on BillingEmailPayload {
   # The customer's email address the invoices are sent to.
   email
+  # Whether the operation was successful.
+  success
+}
+
+fragment CallRoomPayload on CallRoomPayload {
+  # The url to the room.
+  url
   # Whether the operation was successful.
   success
 }
@@ -4135,6 +4158,37 @@ query organization_integrations(
     }
   }
 }
+# Labels associated with the organization.
+query organization_labels(
+  # A cursor to be used with first for forward pagination
+  $after: String
+  # A cursor to be used with last for backward pagination.
+  $before: String
+  # [Alpha] Filter returned issue labels.
+  $filter: IssueLabelFilter
+  # The number of items to forward paginate (used with after). Defaults to 50.
+  $first: Int
+  # Should archived resources be included (default: false)
+  $includeArchived: Boolean
+  # The number of items to backward paginate (used with before). Defaults to 50.
+  $last: Int
+  # By which field should the pagination order by. Available options are createdAt (default) and updatedAt.
+  $orderBy: PaginationOrderBy
+) {
+  organization {
+    labels(
+      after: $after
+      before: $before
+      filter: $filter
+      first: $first
+      includeArchived: $includeArchived
+      last: $last
+      orderBy: $orderBy
+    ) {
+      ...IssueLabelConnection
+    }
+  }
+}
 # Milestones associated with the organization.
 query organization_milestones(
   # A cursor to be used with first for forward pagination
@@ -4194,6 +4248,34 @@ query organization_teams(
       orderBy: $orderBy
     ) {
       ...TeamConnection
+    }
+  }
+}
+# Templates associated with the organization.
+query organization_templates(
+  # A cursor to be used with first for forward pagination
+  $after: String
+  # A cursor to be used with last for backward pagination.
+  $before: String
+  # The number of items to forward paginate (used with after). Defaults to 50.
+  $first: Int
+  # Should archived resources be included (default: false)
+  $includeArchived: Boolean
+  # The number of items to backward paginate (used with before). Defaults to 50.
+  $last: Int
+  # By which field should the pagination order by. Available options are createdAt (default) and updatedAt.
+  $orderBy: PaginationOrderBy
+) {
+  organization {
+    templates(
+      after: $after
+      before: $before
+      first: $first
+      includeArchived: $includeArchived
+      last: $last
+      orderBy: $orderBy
+    ) {
+      ...TemplateConnection
     }
   }
 }
@@ -5373,6 +5455,17 @@ mutation attachmentLinkIntercom(
     ...AttachmentPayload
   }
 }
+# Link an existing Jira issue to an issue.
+mutation attachmentLinkJiraIssue(
+  # The issue for which to link the Jira issue.
+  $issueId: String!
+  # The Jira issue key or ID to link.
+  $jiraIssueId: String!
+) {
+  attachmentLinkJiraIssue(issueId: $issueId, jiraIssueId: $jiraIssueId) {
+    ...AttachmentPayload
+  }
+}
 # Link any url to an issue.
 mutation attachmentLinkURL(
   # The issue for which to link the url.
@@ -5415,6 +5508,15 @@ mutation billingEmailUpdate(
 ) {
   billingEmailUpdate(input: $input) {
     ...BillingEmailPayload
+  }
+}
+# Creates a call room for an issue or returns an existing call room.
+mutation callRoomCreate(
+  # The issue object to create.
+  $input: CallRoomCreateInput!
+) {
+  callRoomCreate(input: $input) {
+    ...CallRoomPayload
   }
 }
 # Update collaborative document with client steps.
@@ -5536,27 +5638,9 @@ mutation cycleUpdate(
     ...CyclePayload
   }
 }
-# Create the OAuth test applications in development.
-mutation debugCreateOAuthApps {
-  debugCreateOAuthApps {
-    ...DebugPayload
-  }
-}
-# Create the SAML test organization in development.
-mutation debugCreateSAMLOrg {
-  debugCreateSAMLOrg {
-    ...DebugPayload
-  }
-}
 # Always fails with internal error. Used to debug logging.
 mutation debugFailWithInternalError {
   debugFailWithInternalError {
-    ...DebugPayload
-  }
-}
-# Always logs an error to Sentry as warning. Used to debug logging.
-mutation debugFailWithWarning {
-  debugFailWithWarning {
     ...DebugPayload
   }
 }
@@ -5801,21 +5885,12 @@ mutation integrationIntercomDelete {
     ...IntegrationPayload
   }
 }
-# Updates settings on the Intercom integration.
+# [DEPRECATED] Updates settings on the Intercom integration.
 mutation integrationIntercomSettingsUpdate(
   # A partial Intercom integration settings object to update the integration settings with.
   $input: IntercomSettingsInput!
 ) {
   integrationIntercomSettingsUpdate(input: $input) {
-    ...IntegrationPayload
-  }
-}
-# Updates settings on the Jira integration.
-mutation integrationJiraSettingsUpdate(
-  # A partial Jira integration settings object to update the integration settings with.
-  $input: JiraSettingsInput!
-) {
-  integrationJiraSettingsUpdate(input: $input) {
     ...IntegrationPayload
   }
 }
@@ -5844,6 +5919,17 @@ mutation integrationSentryConnect(
   $organizationSlug: String!
 ) {
   integrationSentryConnect(code: $code, installationId: $installationId, organizationSlug: $organizationSlug) {
+    ...IntegrationPayload
+  }
+}
+# [INTERNAL] Updates the integration.
+mutation integrationSettingsUpdate(
+  # The identifier of the integration to update.
+  $id: String!
+  # An integration settings object.
+  $input: IntegrationSettingsInput!
+) {
+  integrationSettingsUpdate(id: $id, input: $input) {
     ...IntegrationPayload
   }
 }

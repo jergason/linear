@@ -563,6 +563,24 @@ input BooleanComparator {
   eq: Boolean
 }
 
+input CallRoomCreateInput {
+  """
+  The identifier of the issue to create the room for.
+  """
+  issueId: String!
+}
+
+type CallRoomPayload {
+  """
+  Whether the operation was successful.
+  """
+  success: Boolean!
+  """
+  The url to the room.
+  """
+  url: String
+}
+
 type Card {
   """
   The brand of the card, e.g. Visa.
@@ -1388,6 +1406,10 @@ type Document implements Node {
   """
   content: String
   """
+  The document content as JSON.
+  """
+  contentData: JSONObject
+  """
   The time at which the entity was created.
   """
   createdAt: DateTime!
@@ -1442,7 +1464,7 @@ input DocumentCreateInput {
   """
   content: String
   """
-  The document content as a Prosemirror document.
+  [Internal] The document content as a Prosemirror document.
   """
   contentData: JSONObject
   """
@@ -1531,7 +1553,7 @@ input DocumentUpdateInput {
   """
   content: String
   """
-  The document content as a Prosemirror document.
+  [Internal] The document content as a Prosemirror document.
   """
   contentData: JSONObject
   """
@@ -2120,6 +2142,13 @@ type GoogleSheetsSettings {
   updatedIssuesAt: DateTime!
 }
 
+input GoogleSheetsSettingsInput {
+  sheetId: Float!
+  spreadsheetId: String!
+  spreadsheetUrl: String!
+  updatedIssuesAt: DateTime!
+}
+
 input GoogleUserAccountAuthInput {
   """
   Code returned from Google's OAuth flow.
@@ -2342,6 +2371,16 @@ type IntegrationSettings {
   slackPost: SlackPostSettings
   slackProjectPost: SlackPostSettings
   zendesk: ZendeskSettings
+}
+
+input IntegrationSettingsInput {
+  googleSheets: GoogleSheetsSettingsInput
+  intercom: IntercomSettingsInput
+  jira: JiraSettingsInput
+  sentry: SentrySettingsInput
+  slackPost: SlackPostSettingsInput
+  slackProjectPost: SlackPostSettingsInput
+  zendesk: ZendeskSettingsInput
 }
 
 """
@@ -3528,10 +3567,11 @@ type IssueLabel implements Node {
   The label's name.
   """
   name: String!
+  organization: Organization @deprecated(reason: "Workspace labels are identified by their team being null.")
   """
-  The team to which the label belongs to.
+  The team that the label is associated with. If null, the label is associated with the global workspace..
   """
-  team: Team!
+  team: Team
   """
   The last time at which the entity was updated. This is the same as the creation time if the
       entity hasn't been update after creation.
@@ -3609,9 +3649,9 @@ input IssueLabelCreateInput {
   """
   name: String!
   """
-  The team associated with the label.
+  The team associated with the label. If not given, the label will be associated with the entire workspace.
   """
-  teamId: String!
+  teamId: String
 }
 
 type IssueLabelEdge {
@@ -4277,6 +4317,19 @@ type Mutation {
     issueId: String!
   ): AttachmentPayload!
   """
+  Link an existing Jira issue to an issue.
+  """
+  attachmentLinkJiraIssue(
+    """
+    The issue for which to link the Jira issue.
+    """
+    issueId: String!
+    """
+    The Jira issue key or ID to link.
+    """
+    jiraIssueId: String!
+  ): AttachmentPayload!
+  """
   Link any url to an issue.
   """
   attachmentLinkURL(
@@ -4328,6 +4381,15 @@ type Mutation {
     """
     input: BillingEmailUpdateInput!
   ): BillingEmailPayload!
+  """
+  Creates a call room for an issue or returns an existing call room.
+  """
+  callRoomCreate(
+    """
+    The issue object to create.
+    """
+    input: CallRoomCreateInput!
+  ): CallRoomPayload!
   """
   Update collaborative document with client steps.
   """
@@ -4452,19 +4514,28 @@ type Mutation {
     input: CycleUpdateInput!
   ): CyclePayload!
   """
-  Create the OAuth test applications in development.
+  [Internal] Create the OAuth test applications in development.
   """
   debugCreateOAuthApps: DebugPayload!
   """
-  Create the SAML test organization in development.
+  [Internal] Create the SAML test organization in development.
   """
   debugCreateSAMLOrg: DebugPayload!
+  """
+  [Internal] Create test subscription in development.
+  """
+  debugCreateSubscription(
+    """
+    Subscription type.
+    """
+    subscriptionType: String!
+  ): DebugPayload!
   """
   Always fails with internal error. Used to debug logging.
   """
   debugFailWithInternalError: DebugPayload!
   """
-  Always logs an error to Sentry as warning. Used to debug logging.
+  [Internal] Always logs an error to Sentry as warning. Used to debug logging.
   """
   debugFailWithWarning: DebugPayload!
   """
@@ -4724,7 +4795,7 @@ type Mutation {
   """
   integrationIntercomDelete: IntegrationPayload!
   """
-  Updates settings on the Intercom integration.
+  [DEPRECATED] Updates settings on the Intercom integration.
   """
   integrationIntercomSettingsUpdate(
     """
@@ -4732,15 +4803,7 @@ type Mutation {
     """
     input: IntercomSettingsInput!
   ): IntegrationPayload!
-  """
-  Updates settings on the Jira integration.
-  """
-  integrationJiraSettingsUpdate(
-    """
-    A partial Jira integration settings object to update the integration settings with.
-    """
-    input: JiraSettingsInput!
-  ): IntegrationPayload!
+    @deprecated(reason: "This mutation is deprecated, please use `integrationSettingsUpdate` instead")
   """
   Enables Loom integration for the organization.
   """
@@ -4770,6 +4833,19 @@ type Mutation {
     The slug of the Sentry organization being connected.
     """
     organizationSlug: String!
+  ): IntegrationPayload!
+  """
+  [INTERNAL] Updates the integration.
+  """
+  integrationSettingsUpdate(
+    """
+    The identifier of the integration to update.
+    """
+    id: String!
+    """
+    An integration settings object.
+    """
+    input: IntegrationSettingsInput!
   ): IntegrationPayload!
   """
   Integrates the organization with Slack.
@@ -5926,6 +6002,10 @@ input NestedStringComparator {
   """
   contains: String
   """
+  Contains case insensitive constraint. Matches any values that contain the given string case insensitive.
+  """
+  containsIgnoreCase: String
+  """
   Ends with constraint. Matches any values that end with the given string.
   """
   endsWith: String
@@ -5933,6 +6013,10 @@ input NestedStringComparator {
   Equals constraint.
   """
   eq: String
+  """
+  Equals case insensitive. Matches any values that matches the given string case insensitive.
+  """
+  eqIgnoreCase: String
   """
   In-array constraint.
   """
@@ -5942,6 +6026,10 @@ input NestedStringComparator {
   """
   neq: String
   """
+  Not-equals case insensitive. Matches any values that don't match the given string case insensitive.
+  """
+  neqIgnoreCase: String
+  """
   Not-in-array constraint.
   """
   nin: [String!]
@@ -5949,6 +6037,10 @@ input NestedStringComparator {
   Doesn't contain constraint. Matches any values that don't contain the given string.
   """
   notContains: String
+  """
+  Doesn't contain case insensitive constraint. Matches any values that don't contain the given string case insensitive.
+  """
+  notContainsIgnoreCase: String
   """
   Doesn't end with constraint. Matches any values that don't end with the given string.
   """
@@ -6412,6 +6504,10 @@ input NullableStringComparator {
   """
   contains: String
   """
+  Contains case insensitive constraint. Matches any values that contain the given string case insensitive.
+  """
+  containsIgnoreCase: String
+  """
   Ends with constraint. Matches any values that end with the given string.
   """
   endsWith: String
@@ -6419,6 +6515,10 @@ input NullableStringComparator {
   Equals constraint.
   """
   eq: String
+  """
+  Equals case insensitive. Matches any values that matches the given string case insensitive.
+  """
+  eqIgnoreCase: String
   """
   In-array constraint.
   """
@@ -6428,6 +6528,10 @@ input NullableStringComparator {
   """
   neq: String
   """
+  Not-equals case insensitive. Matches any values that don't match the given string case insensitive.
+  """
+  neqIgnoreCase: String
+  """
   Not-in-array constraint.
   """
   nin: [String!]
@@ -6435,6 +6539,10 @@ input NullableStringComparator {
   Doesn't contain constraint. Matches any values that don't contain the given string.
   """
   notContains: String
+  """
+  Doesn't contain case insensitive constraint. Matches any values that don't contain the given string case insensitive.
+  """
+  notContainsIgnoreCase: String
   """
   Doesn't end with constraint. Matches any values that don't end with the given string.
   """
@@ -6851,6 +6959,39 @@ type Organization implements Node {
     orderBy: PaginationOrderBy
   ): IntegrationConnection!
   """
+  Labels associated with the organization.
+  """
+  labels(
+    """
+    A cursor to be used with first for forward pagination
+    """
+    after: String
+    """
+    A cursor to be used with last for backward pagination.
+    """
+    before: String
+    """
+    [Alpha] Filter returned issue labels.
+    """
+    filter: IssueLabelFilter
+    """
+    The number of items to forward paginate (used with after). Defaults to 50.
+    """
+    first: Int
+    """
+    Should archived resources be included (default: false)
+    """
+    includeArchived: Boolean
+    """
+    The number of items to backward paginate (used with before). Defaults to 50.
+    """
+    last: Int
+    """
+    By which field should the pagination order by. Available options are createdAt (default) and updatedAt.
+    """
+    orderBy: PaginationOrderBy
+  ): IssueLabelConnection!
+  """
   The organization's logo URL.
   """
   logoUrl: String
@@ -6940,6 +7081,35 @@ type Organization implements Node {
     """
     orderBy: PaginationOrderBy
   ): TeamConnection!
+  """
+  Templates associated with the organization.
+  """
+  templates(
+    """
+    A cursor to be used with first for forward pagination
+    """
+    after: String
+    """
+    A cursor to be used with last for backward pagination.
+    """
+    before: String
+    """
+    The number of items to forward paginate (used with after). Defaults to 50.
+    """
+    first: Int
+    """
+    Should archived resources be included (default: false)
+    """
+    includeArchived: Boolean
+    """
+    The number of items to backward paginate (used with before). Defaults to 50.
+    """
+    last: Int
+    """
+    By which field should the pagination order by. Available options are createdAt (default) and updatedAt.
+    """
+    orderBy: PaginationOrderBy
+  ): TemplateConnection!
   """
   The last time at which the entity was updated. This is the same as the creation time if the
       entity hasn't been update after creation.
@@ -9539,10 +9709,23 @@ type SentrySettings {
   organizationSlug: String!
 }
 
+input SentrySettingsInput {
+  """
+  The slug of the Sentry organization being connected.
+  """
+  organizationSlug: String!
+}
+
 """
 Slack notification specific settings.
 """
 type SlackPostSettings {
+  channel: String!
+  channelId: String!
+  configurationUrl: String!
+}
+
+input SlackPostSettingsInput {
   channel: String!
   channelId: String!
   configurationUrl: String!
@@ -9583,6 +9766,10 @@ input StringComparator {
   """
   contains: String
   """
+  Contains case insensitive constraint. Matches any values that contain the given string case insensitive.
+  """
+  containsIgnoreCase: String
+  """
   Ends with constraint. Matches any values that end with the given string.
   """
   endsWith: String
@@ -9590,6 +9777,10 @@ input StringComparator {
   Equals constraint.
   """
   eq: String
+  """
+  Equals case insensitive. Matches any values that matches the given string case insensitive.
+  """
+  eqIgnoreCase: String
   """
   In-array constraint.
   """
@@ -9599,6 +9790,10 @@ input StringComparator {
   """
   neq: String
   """
+  Not-equals case insensitive. Matches any values that don't match the given string case insensitive.
+  """
+  neqIgnoreCase: String
+  """
   Not-in-array constraint.
   """
   nin: [String!]
@@ -9606,6 +9801,10 @@ input StringComparator {
   Doesn't contain constraint. Matches any values that don't contain the given string.
   """
   notContains: String
+  """
+  Doesn't contain case insensitive constraint. Matches any values that don't contain the given string case insensitive.
+  """
+  notContainsIgnoreCase: String
   """
   Doesn't end with constraint. Matches any values that don't end with the given string.
   """
@@ -9797,6 +9996,10 @@ type Team implements Node {
   """
   autoCloseStateId: String
   """
+  The team's color.
+  """
+  color: String
+  """
   The time at which the entity was created.
   """
   createdAt: DateTime!
@@ -9901,6 +10104,10 @@ type Team implements Node {
   Whether to group recent issue history entries.
   """
   groupIssueHistory: Boolean!
+  """
+  The icon of the team.
+  """
+  icon: String
   """
   The unique identifier of the entity.
   """
@@ -10268,6 +10475,10 @@ input TeamCreateInput {
   """
   autoCloseStateId: String
   """
+  The color of the team.
+  """
+  color: String
+  """
   The cooldown time after each cycle in weeks.
   """
   cycleCooldownTime: Int
@@ -10315,6 +10526,10 @@ input TeamCreateInput {
   Whether to group recent issue history entries.
   """
   groupIssueHistory: Boolean
+  """
+  The icon of the team.
+  """
+  icon: String
   """
   The identifier. If none is provided, the backend will generate one.
   """
@@ -10538,6 +10753,10 @@ input TeamUpdateInput {
   """
   autoCloseStateId: String
   """
+  The color of the team.
+  """
+  color: String
+  """
   The cooldown time after each cycle in weeks.
   """
   cycleCooldownTime: Int
@@ -10597,6 +10816,10 @@ input TeamUpdateInput {
   Whether to group recent issue history entries.
   """
   groupIssueHistory: Boolean
+  """
+  The icon of the team.
+  """
+  icon: String
   """
   Whether to allow zeros in issues estimates.
   """
@@ -10668,7 +10891,7 @@ input TeamUpdateInput {
 }
 
 """
-A template object used for creating new issues faster.
+A template object used for creating entities faster.
 """
 type Template implements Node {
   """
@@ -10698,11 +10921,11 @@ type Template implements Node {
   """
   The organization that the template is associated with. If null, the template is associated with a particular team.
   """
-  organization: Organization!
+  organization: Organization
   """
   The team that the template is associated with. If null, the template is global to the workspace.
   """
-  team: Team!
+  team: Team
   """
   Template data.
   """
@@ -10738,9 +10961,9 @@ input TemplateCreateInput {
   """
   name: String!
   """
-  The identifier or key of the team associated with the template.
+  The identifier or key of the team associated with the template. If not given, the template will be shared across all teams.
   """
-  teamId: String!
+  teamId: String
   """
   The template data as JSON encoded attributes of the type of entity, such as an issue.
   """
@@ -10783,6 +11006,10 @@ input TemplateUpdateInput {
   The template name.
   """
   name: String
+  """
+  The identifier or key of the team associated with the template. If set to null, the template will be shared across all teams.
+  """
+  teamId: String
   """
   The template data as JSON encoded attributes of the type of entity, such as an issue.
   """
@@ -10897,6 +11124,10 @@ input UpdateOrganizationInput {
   """
   Whether the organization is using project milestones.
   """
+  reducedPersonalInformation: Boolean
+  """
+  Whether the organization is using project milestones.
+  """
   roadmapEnabled: Boolean
   """
   The URL key of the organization.
@@ -10918,6 +11149,10 @@ input UpdateUserInput {
   """
   avatarUrl: String
   """
+  The user description or a short bio.
+  """
+  description: String
+  """
   Reason for deactivation.
   """
   disableReason: String
@@ -10929,6 +11164,22 @@ input UpdateUserInput {
   The name of the user.
   """
   name: String
+  """
+  The emoji part of the user status.
+  """
+  statusEmoji: String
+  """
+  The label part of the user status.
+  """
+  statusLabel: String
+  """
+  When the user status should be cleared.
+  """
+  statusUntilAt: DateTime
+  """
+  The local timezone of the user.
+  """
+  timezone: String
 }
 
 """
@@ -11080,6 +11331,10 @@ type User implements Node {
     orderBy: PaginationOrderBy
   ): IssueConnection!
   """
+  A short description of the user, either its title or bio.
+  """
+  description: String
+  """
   Reason why is the account disabled.
   """
   disableReason: String
@@ -11111,6 +11366,18 @@ type User implements Node {
   Organization the user belongs to.
   """
   organization: Organization!
+  """
+  The emoji to represent the user current status.
+  """
+  statusEmoji: String
+  """
+  The label of the user current status.
+  """
+  statusLabel: String
+  """
+  A date at which the user current status should be cleared.
+  """
+  statusUntilAt: DateTime
   """
   Memberships associated with the user. For easier access of the same data, use `teams` query.
   """
@@ -11173,6 +11440,10 @@ type User implements Node {
     """
     orderBy: PaginationOrderBy
   ): TeamConnection!
+  """
+  The local timezone of the user.
+  """
+  timezone: String
   """
   The last time at which the entity was updated. This is the same as the creation time if the
       entity hasn't been update after creation.
@@ -11333,6 +11604,7 @@ The types of flags that the user can have.
 enum UserFlagType {
   analyticsWelcomeDismissed
   canPlaySnake
+  canPlayTetris
   completedOnboarding
   cycleWelcomeDismissed
   desktopDownloadToastDismissed
@@ -11963,6 +12235,21 @@ input WorkflowStateUpdateInput {
 Zendesk specific settings.
 """
 type ZendeskSettings {
+  """
+  The ID of the Linear bot user.
+  """
+  botUserId: String!
+  """
+  The subdomain of the Zendesk organization being connected.
+  """
+  subdomain: String!
+  """
+  The URL of the connected Zendesk organization.
+  """
+  url: String!
+}
+
+input ZendeskSettingsInput {
   """
   The ID of the Linear bot user.
   """
